@@ -70,4 +70,4 @@ private:
 };
 
 
-void rsync(const char* sender, const char* reciever) {};
+int rsync(const char* sender, const char* reciever) {};
