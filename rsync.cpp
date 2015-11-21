@@ -13,6 +13,12 @@
 #include <boost/serialization/vector.hpp>
 #include <boost/archive/text_iarchive.hpp>
 #include <boost/archive/text_oarchive.hpp>
+#include <string.h>
+#include <stdio.h>
+#include <dirent.h>
+#include <string>
+#include <iostream>
+
 
 using namespace std;
 
@@ -51,8 +57,28 @@ void SocketConnection::ReadFrame(Frame* frame) {
     stringstream temp(body);
     boost::archive::text_iarchive ia(temp);
     ia >> frame->body; 
-
 }
+
+
+FileList Protocol::GetFileList(char *path)
+{   
+    vector<string> files;      
+    DIR *dir;
+    if ((dir=opendir(path))==NULL)
+                return -1;
+    else {
+        struct dirent *f_cur;
+        while ((f_cur=readdir(dir))!=NULL) {
+            string tmp(f_cur->d_name);
+            if ((strcmp(f_cur->d_name, ".") != 0) && (strcmp(f_cur->d_name, "..") != 0))
+                files.push_back(tmp);
+        }
+    }                
+    closedir(dir);
+    for (int i=0; i < files.size(); ++i)
+        cout << files[i] << endl; 
+    return vector<string> files; 
+}  
 
 
 
