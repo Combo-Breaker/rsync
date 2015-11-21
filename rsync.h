@@ -19,8 +19,11 @@ enum class MsgId {
 
 struct Frame {
     MsgId msg_id;
-    bool last;
     std::string body;
+    void serialize(Archive & ar, const unsigned int version) {
+         ar & msg_id;
+         ar & body;
+    }
 };
 
 class Connection {
@@ -48,8 +51,8 @@ struct FileList {
     std::vector<std::string> files;
 
     template<class Archive>
-    void serialize(Archive& ar, const unsigned int version) {
-        ar & files;
+    void serialize(Archive & ar, const unsigned int version) {
+         ar & files;
     }
 };
 
@@ -70,4 +73,4 @@ private:
 };
 
 
-int rsync(const char* sender, const char* reciever) {};
+
