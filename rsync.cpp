@@ -67,10 +67,10 @@ FileList Protocol::GetFileList(char *path)
     if ((dir=opendir(path))==NULL)
                 return -1;
     else {
-        struct dirent *f_cur;
-        while ((f_cur=readdir(dir))!=NULL) {
-            string tmp(f_cur->d_name);
-            if ((strcmp(f_cur->d_name, ".") != 0) && (strcmp(f_cur->d_name, "..") != 0))
+        struct dirent *cur;
+        while ((cur=readdir(dir))!=NULL) {
+            string tmp(cur->d_name);
+            if ((strcmp(cur->d_name, ".") != 0) && (strcmp(cur->d_name, "..") != 0))
                 files.push_back(tmp);
         }
     }                
