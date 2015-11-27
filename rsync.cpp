@@ -90,14 +90,11 @@ void rsync(const char* source, const char* dest) {
     Protocol p(&sender, &receiver);
     thread t1([&] { 
         p.RequestList(dest);
-        p.RecieveFileList();
-        p.SendOk();
+        cout << "OK";
     });
     thread t2([&] { 
         p.GetFileList(dest)
         p.SendFileList();
-        p.ReceiveOk();
-
     });
     t1.join();
     t2.join();
