@@ -78,7 +78,31 @@ FileList Protocol::GetFileList(char *path)
     for (int i=0; i < files.size(); ++i)
         cout << files[i] << endl; 
     return vector<string> files; 
-}  
+}
+
+void rsync(const char* source, const char* dest) {
+    int sockets[2];
+    socketpair(AF_UNIX, SOCK_STREAM, 0, sockets);
+    SocketConnection sender(sockets[0]), receiver(sockets[1]);
+    vector<string> files;
+    Frame frame;
+    frame.msg_id = MsgId::GETLIST;
+    Protocol p(&sender, &receiver);
+    thread t1([&] { 
+        p.RequestList(dest);
+        p.RecieveFileList();
+        p.SendOk();
+    });
+    thread t2([&] { 
+        p.GetFileList(dest)
+        p.SendFileList();
+        p.ReceiveOk();
+
+    });
+    t1.join();
+    t2.join();
+}
+    
 
 
 
