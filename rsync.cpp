@@ -80,6 +80,21 @@ FileList Protocol::GetFileList(char *path)
     return vector<string> files; 
 }
 
+
+void Protocol::RequestFileList(const char* dest) {
+    Frame frame;    
+    frame.msg_id = MsgId::GETLIST;
+    frame.body = string (dest);
+    conn_->WriteFrame(&frame);
+}
+
+void Protocol::RequestFileList(const char* dest) {
+    Frame frame; 
+    frame.msg_id = MsgId::GETLIST;
+    frame.body = string (dest);
+    conn_->WriteFrame(&frame);
+}
+
 void rsync(const char* source, const char* dest) {
     int sockets[2];
     socketpair(AF_UNIX, SOCK_STREAM, 0, sockets);
