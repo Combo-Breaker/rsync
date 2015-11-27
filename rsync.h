@@ -61,7 +61,7 @@ class Protocol {
 public:
     Protocol(Connection* conn) : conn_(conn) {}
 
-    void RequestList();
+    void RequestFileList();
     void SendFileList(const FileList& list);
 
     MsgId RecvMsg(); // reads next frame
