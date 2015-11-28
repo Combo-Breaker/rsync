@@ -81,12 +81,6 @@ FileList Protocol::GetFileList(char *path)
 }
 
 
-void Protocol::RequestFileList(const char* dest) {
-    Frame frame;    
-    frame.msg_id = MsgId::GETLIST;
-    frame.body = string (dest);
-    conn_->WriteFrame(&frame);
-}
 
 void Protocol::RequestFileList(const char* dest) {
     Frame frame; 
