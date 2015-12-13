@@ -56,6 +56,7 @@ FileList Protocol::GetFileList() { //получить список файлов 
 void read_all(int fd, char* buf, size_t size) {
     int s = 0;
     while (int w = read(fd, buf + s, size)) {
+        if (w == -1) throw ("Can`t read the frame");
         size -= w;
         s += w;
     }
@@ -64,6 +65,7 @@ void read_all(int fd, char* buf, size_t size) {
 void write_all(int fd, char* buf, size_t size) {
     int s = 0;
     while (int w = write(fd, buf + s, size)) {
+        if (w == -1) throw ("Can`t write the frame");
         size -= w;
         s += w;
     }
