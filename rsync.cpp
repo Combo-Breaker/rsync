@@ -9,6 +9,8 @@
 #include <sys/stat.h>  
 #include <sys/socket.h>  
 #include <sstream>
+#include <algorithm> 
+#include <utility> 
 
 using namespace std;
 
@@ -25,7 +27,6 @@ void Protocol::SendFileList(const FileList& list) { //отправить спи�
     boost::archive::text_oarchive archive(ss);
     archive << list;
     f.body = ss.str();
-
     conn_->WriteFrame(&f);
 }
 
@@ -90,13 +91,15 @@ FileList GetFiles(string path) {   //получить список файлов 
     FileList F;      
     DIR *dir;
     dir = opendir(path.c_str());
+    if (dir == NULL) throw ("Can`t open the directory");
     struct dirent *cur;
-    while ((cur=readdir(dir))!=NULL) {
+    while ((cur = readdir(dir)) != NULL) {
         string tmp(cur->d_name);
         if ((strcmp(cur->d_name, ".") != 0) && (strcmp(cur->d_name, "..") != 0))
             F.files.push_back(tmp);
         }                
-    closedir(dir);
+    int d = closedir(dir);
+    if (d == -1) throw("Can`t close the directory");
     return F; 
 }
 
@@ -118,7 +121,8 @@ pair < vector<string>, vector<string> > difference (vector<string> source, vecto
 
 void rsync(string source, string dest) {
     int sockets[2];
-    socketpair(AF_UNIX, SOCK_STREAM, 0, sockets);
+    int s = socketpair(AF_UNIX, SOCK_STREAM, 0, sockets);
+    if (s == -1) throw ("Can`t create a socketpair");
     SocketConnection sender(sockets[0]), receiver(sockets[1]);
     FileList list_dest, list_source;
     Protocol senrer_prot(&sender);
@@ -143,8 +147,6 @@ void rsync(string source, string dest) {
     t1.join();
     t2.join();
 }
-
-
 
 
 
