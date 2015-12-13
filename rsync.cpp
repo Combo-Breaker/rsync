@@ -1,109 +1,121 @@
-#pragma once
-
-#include <iostream>
-#include <fstream>
-#include <unistd.h> 
-#include <sys/types.h> 
-#include <fcntl.h> 
-#include <cstdlib>
-#include <sys/socket.h>
-#include <vector>
+#include "rsync.h"
 #include <thread>
-#include <boost/serialization/string.hpp>
-#include <boost/serialization/vector.hpp>
-#include <boost/archive/text_iarchive.hpp>
-#include <boost/archive/text_oarchive.hpp>
-#include <string.h>
-#include <stdio.h>
-#include <dirent.h>
-#include <string>
-#include <iostream>
-
+#include <stdio.h>  
+#include <unistd.h>  
+#include <stdlib.h>  
+#include <dirent.h>  
+#include <string.h>  
+#include <sys/types.h>  
+#include <sys/stat.h>  
+#include <sys/socket.h>  
+#include <sstream>
 
 using namespace std;
 
-
-void SocketConnection::WriteFrame (Frame* frame) {
-    
-    stringstream archive;
-    boost::archive::text_oarchive oa(archive);
-    char length[4];
-    sprintf(length, "%04u", (int) frame->body.length()); //not this length
-    archive << length << static_cast<int> (frame->msg_id)  << frame;
-    const string tmp  = archive.str();
-    const char* buf = tmp.c_str();
-    int w = write(fd_, buf, tmp.length()); 
+void Protocol::RequestList() { //запрос на список файлов
+    Frame f;
+    f.msg_id = MsgId::GETLIST;
+    conn_->WriteFrame(&f);
 }
 
+void Protocol::SendFileList(const FileList& list) { //отправить список файлов
+    Frame f;
+    f.msg_id = MsgId::FILELIST;
+    std::stringstream ss;
+    boost::archive::text_oarchive archive(ss);
+    archive << list;
+    f.body = ss.str();
+
+    conn_->WriteFrame(&f);
+}
+
+
+void Protocol::SendOk() { //отправить ОК
+    Frame f;
+    f.msg_id = MsgId::OK;
+    f.body = "";
+    conn_->WriteFrame(&f);
+}
+
+
+MsgId Protocol::RecvMsg() { //получить msg
+    conn_->ReadFrame(&last_received_);
+    return last_received_.msg_id;
+}
+
+FileList Protocol::GetFileList() { //получить список файлов из фрейма
+    std::stringstream ss;
+    ss << last_received_.body;
+    FileList list;
+    boost::archive::text_iarchive archive(ss);
+    archive >> list;
+    return list;
+}
+
+void read_all(int fd, char* buf, size_t size) {
+    int s = 0;
+    while (int w = read(fd, buf + s, size)) {
+        size -= w;
+        s += w;
+    }
+}
+
+void write_all(int fd, char* buf, size_t size) {
+    int s = 0;
+    while (int w = write(fd, buf + s, size)) {
+        size -= w;
+        s += w;
+    }
+}
+
+void SocketConnection::WriteFrame(Frame* frame) {  
+    uint32_t len = frame->body.length();
+    write_all(fd_, (char*) &len, 4);
+    uint8_t id = static_cast<uint8_t> (frame->msg_id);
+    write_all(fd_, (char*) &id, 1);
+    write_all(fd_, (char*) frame->body.c_str(), len);
+}
 
 void SocketConnection::ReadFrame(Frame* frame) {
-    //  0-4 -> size
-    //  5  -> id
-    //  5-(5+size) -> body
-
-    char length[4];
-    int r = read(fd_, length, 4); //fd - which one
-    length[4] = '\0';
-    int len = atoi(length);
-
-    char msg_id[1];
-    r = read(fd_, msg_id, 1);
-    msg_id[1] = '\0';
-    int id = atoi(msg_id);
-    frame->msg_id = (MsgId) id;
-
-    char body[len];
-    r = read(fd_, body, len);
-    stringstream temp(body);
-    boost::archive::text_iarchive ia(temp);
-    ia >> frame->body; 
+    uint32_t len;
+    read_all(fd_, (char*) &len, 4);
+    uint8_t msg_id;
+    read_all(fd_, (char*) &msg_id, 1);
+    frame->msg_id = MsgId(msg_id);
+    frame->body.resize(len);
+    read_all(fd_, (char*) frame->body.c_str(), len);
 }
 
-
-FileList Protocol::GetFileList(char *path)
-{   
-    vector<string> files;      
+FileList GetFiles(string path) {   //получить список файлов директории
+    FileList F;      
     DIR *dir;
-    if ((dir=opendir(path))==NULL)
-                return -1;
-    else {
-        struct dirent *cur;
-        while ((cur=readdir(dir))!=NULL) {
-            string tmp(cur->d_name);
-            if ((strcmp(cur->d_name, ".") != 0) && (strcmp(cur->d_name, "..") != 0))
-                files.push_back(tmp);
-        }
-    }                
+    dir = opendir(path.c_str());
+    struct dirent *cur;
+    while ((cur=readdir(dir))!=NULL) {
+        string tmp(cur->d_name);
+        if ((strcmp(cur->d_name, ".") != 0) && (strcmp(cur->d_name, "..") != 0))
+            F.files.push_back(tmp);
+        }                
     closedir(dir);
-    for (int i=0; i < files.size(); ++i)
-        cout << files[i] << endl; 
-    return vector<string> files; 
+    return F; 
 }
 
-
-
-void Protocol::RequestFileList(const char* dest) {
-    Frame frame; 
-    frame.msg_id = MsgId::GETLIST;
-    frame.body = string (dest);
-    conn_->WriteFrame(&frame);
-}
-
-void rsync(const char* source, const char* dest) {
+void rsync(string source, string dest) {
     int sockets[2];
     socketpair(AF_UNIX, SOCK_STREAM, 0, sockets);
     SocketConnection sender(sockets[0]), receiver(sockets[1]);
-    vector<string> files;
-    Frame frame;
-    frame.msg_id = MsgId::GETLIST;
-    Protocol p(&sender, &receiver);
+    FileList list_dest, list_source;
+    Protocol senrer_prot(&sender);
+    Protocol receiver_prot(&receiver);
     thread t1([&] { 
-        p.RequestList(dest);
-        cout << "OK";
+        senrer_prot.RequestList();
+        senrer_prot.RecvMsg();
+        list_source = GetFiles(source);
     });
     thread t2([&] { 
-        p.GetFileList(dest)
-        p.SendFileList();
+        MsgId i = receiver_prot.RecvMsg();
+        list_dest = GetFiles(dest);
+        receiver_prot.SendFileList(list_dest);
     });
     t1.join();
     t2.join();
