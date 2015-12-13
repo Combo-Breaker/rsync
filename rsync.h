@@ -20,57 +20,49 @@ enum class MsgId {
 struct Frame {
     MsgId msg_id;
     std::string body;
-    void serialize(Archive & ar, const unsigned int version) {
-         ar & msg_id;
-         ar & body;
-    }
 };
 
 class Connection {
 public:
     virtual ~Connection() {}
-    virtual void WriteFrame(Frame* frame) {};
-    virtual void ReadFrame(Frame* frame) {};
+    virtual void WriteFrame(Frame* frame) = 0;
+    virtual void ReadFrame(Frame* frame) = 0;
 };
 
-
-class SocketConnection {
+class SocketConnection : public Connection {
 public:
     SocketConnection(int fd) : fd_(fd) {}
 //    ~SocketConnection();
 
-    virtual void WriteFrame(Frame* frame) {}
-    virtual void ReadFrame(Frame* frame) {}
+    virtual void WriteFrame(Frame* frame);
+    virtual void ReadFrame(Frame* frame);
 
 private:
     int fd_;
 };
 
-
 struct FileList {
     std::vector<std::string> files;
 
     template<class Archive>
-    void serialize(Archive & ar, const unsigned int version) {
-         ar & files;
+    void serialize(Archive& ar, const unsigned int version) {
+        ar & files;
     }
 };
-
 
 class Protocol {
 public:
     Protocol(Connection* conn) : conn_(conn) {}
 
-    void RequestFileList();
+    void RequestList();
+    void SendOk();
     void SendFileList(const FileList& list);
 
-    MsgId RecvMsg(); // reads next frame
+    MsgId RecvMsg(); 
     FileList GetFileList();
-
 private:
     Connection* conn_;
     Frame last_received_;
 };
-
 
 
