@@ -1,12 +1,8 @@
-#include <iostream>
+#include "rsync.cpp"
 #include "rsync.h"
 
 int main(int argc, char const *argv[]) {
-	if (argc == 3) {
-		rsync(argv[2], argv[3]);
-
-	} else {
-		std::cout << "inappropriate usage of rsync";
-	}
+		std::string source(argv[1]), dest(argv[2]);
+		rsync(source, dest);
 	return 0;
 }
