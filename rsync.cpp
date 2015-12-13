@@ -100,6 +100,22 @@ FileList GetFiles(string path) {   //получить список файлов 
     return F; 
 }
 
+pair < vector<string>, vector<string> > difference (vector<string> source, vector<string> dest) { //вектор cp / вектор rm
+    sort (source.begin(), source.end());
+    sort (dest.begin(), dest.end());
+    pair < vector<string>, vector<string> > diff;
+    vector<string>::iterator it;
+    vector<string> cp(source.size());
+    vector<string> rm(dest.size());
+    it = set_difference (source.begin(), source.end(), dest.begin(), dest.end(), cp.begin()); 
+    cp.resize(it - cp.begin()); 
+    it = set_difference (dest.begin(), dest.end(), source.begin(), source.end(), rm.begin()); 
+    rm.resize(it - rm.begin());      
+    diff = make_pair(cp, rm);   
+    return diff; 
+}
+
+
 void rsync(string source, string dest) {
     int sockets[2];
     socketpair(AF_UNIX, SOCK_STREAM, 0, sockets);
@@ -111,6 +127,13 @@ void rsync(string source, string dest) {
         senrer_prot.RequestList();
         senrer_prot.RecvMsg();
         list_source = GetFiles(source);
+        pair < vector<string>, vector<string> > diff;
+        diff = difference(list_source.files, senrer_prot.GetFileList().files);
+        for (auto i : diff.first)
+        cout << "cp" << " " << i << endl; 
+        for (auto i : diff.second)
+        cout << "rm" << " " << i << endl; 
+        senrer_prot.SendOk(); // !!!!!!!!!
     });
     thread t2([&] { 
         MsgId i = receiver_prot.RecvMsg();
@@ -120,7 +143,7 @@ void rsync(string source, string dest) {
     t1.join();
     t2.join();
 }
-    
+
 
 
 
