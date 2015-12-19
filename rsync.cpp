@@ -10,7 +10,8 @@
 #include <sys/socket.h>  
 #include <sstream>
 #include <algorithm> 
-#include <utility> 
+#include <utility>
+#include <netinet/in.h>
 
 using namespace std;
 
@@ -122,34 +123,67 @@ pair < vector<string>, vector<string> > difference (vector<string> source, vecto
 
 
 void rsync(string source, string dest) {
-    int sockets[2];
-    int s = socketpair(AF_UNIX, SOCK_STREAM, 0, sockets);
-    if (s == -1) throw ("Can`t create a socketpair");
-    SocketConnection sender(sockets[0]), receiver(sockets[1]);
+    int sock[2];    
+    sock[0] = socket(AF_INET, SOCK_STREAM, 0);
+    sock[1] = socket(AF_INET, SOCK_STREAM, 0);
+    SocketConnection sender(sock[0]), receiver(sock[1]);
     FileList list_dest, list_source;
     Protocol senrer_prot(&sender);
     Protocol receiver_prot(&receiver);
-    thread t1([&] { 
+
+    thread client([&] { // sender - source
+        struct sockaddr_in addr;
+        addr.sin_family = AF_INET;
+        addr.sin_port = htons(3425);
+        addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK); //тут пока замыкание на себя
+         if (connect(sock[0], (struct sockaddr *)&addr, sizeof(addr)) < 0)
+            throw ("Can`t connect to the server");
+        
         senrer_prot.RequestList();
         senrer_prot.RecvMsg();
         list_source = GetFiles(source);
         pair < vector<string>, vector<string> > diff;
         diff = difference(list_source.files, senrer_prot.GetFileList().files);
-        for (auto i : diff.first)
-        cout << "cp" << " " << i << endl; 
-        for (auto i : diff.second)
-        cout << "rm" << " " << i << endl; 
-        senrer_prot.SendOk(); // !!!!!!!!!
-    });
-    thread t2([&] { 
-        MsgId i = receiver_prot.RecvMsg();
-        list_dest = GetFiles(dest);
-        receiver_prot.SendFileList(list_dest);
-    });
-    t1.join();
-    t2.join();
-}
 
+        /* ВЫВОД РАЗНОСТИ */
+        for (auto i : diff.first)
+            cout << "cp" << " " << i << endl; 
+        for (auto i : diff.second)
+            cout << "rm" << " " << i << endl; 
+
+
+        senrer_prot.SendOk(); 
+        close(sock[0]);        
+    });
+
+
+    thread server([&] { // reciever - dest
+        int listener;
+        struct sockaddr_in addr;
+
+        listener = socket(AF_INET, SOCK_STREAM, 0);
+        addr.sin_family = AF_INET;
+        addr.sin_port = htons(3425);
+        addr.sin_addr.s_addr = htonl(INADDR_ANY);
+        int t = sizeof(addr);
+        if (bind(listener, (struct sockaddr *)&addr, t) < 0) 
+            throw("Bind error"); // переписать
+        while(1) {
+            sock[1] = accept(listener, NULL, NULL);
+            MsgId i = receiver_prot.RecvMsg();
+            switch (i) {
+                case MsgId::OK:
+                   close(sock[1]);
+                   break; // нужно ли?
+                case MsgId::GETLIST:
+                    list_dest = GetFiles(dest);
+                    receiver_prot.SendFileList(list_dest); 
+            }
+        }       
+    });
+    client.join();
+    server.join();    
+}
 
 
 
