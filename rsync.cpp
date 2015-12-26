@@ -122,41 +122,39 @@ pair < vector<string>, vector<string> > difference (vector<string> source, vecto
 }
 
 
-void Sender::Launch(string source) {
+void Sender::Launch(string source) { //client
     this->RequestList();
     FileList source_files = GetFiles(source);
+    FileList dest_files;
     bool state = true;
     while (state) { 
         this->RecvMsg();
         switch (this->last_received_.msg_id) {
             case MsgId::FILELIST: {
-                FileList dest_files = this->GetFileList();                
-                
-                pair <vector<string>, vector<string> > diff = difference(source_files.files, dest_files.files);
-                for (auto it = diff.first.begin(); it != diff.first.end(); ++it) {
-                    cout << "cp" << ' ' << (*it) << endl;
-                }
-                for (auto it = diff.second.begin(); it != diff.second.end(); ++it) {
-                    cout << "rm" << ' ' << (*it) << endl;
-                }
-                
-                this->SendOk();
-
+                dest_files = this->GetFileList();
                 state = false;
-                break;
+                break;               
             }
         }
     }
+    this->SendOk();
+    pair <vector<string>, vector<string> > diff = difference(source_files.files, dest_files.files);
+    for (auto it = diff.first.begin(); it != diff.first.end(); ++it) {
+        cout << "cp" << ' ' << (*it) << endl;
+    }
+    for (auto it = diff.second.begin(); it != diff.second.end(); ++it) {
+        cout << "rm" << ' ' << (*it) << endl;
+    }
 }
 
-void Receiver::Launch(string dest) {
+void Receiver::Launch(string dest) { //server
     bool state = true;
     while (state) {
         this->RecvMsg();
         switch (this->last_received_.msg_id) {
             case MsgId::GETLIST: {
                 this->dest_ = this->last_received_.body;
-                FileList files = GetFileList();
+                FileList files = GetFiles(dest);
                 this->SendFileList(files);
                 break;
             }
