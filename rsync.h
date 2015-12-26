@@ -60,9 +60,31 @@ public:
 
     MsgId RecvMsg(); 
     FileList GetFileList();
-private:
+protected:
     Connection* conn_;
     Frame last_received_;
 };
 
+class Sender : public Protocol  {
+public:
+    Sender(SocketConnection* conn, std::string source, std::string dest) : Protocol(conn) {
+        source_ = source;
+        dest_ = dest;
+    }
+    void Launch(std::string s);
+private:
+    std::string source_;
+    std::string dest_;
+    
+};
+
+class Receiver : public Protocol {
+public:
+    Receiver(SocketConnection* conn) : Protocol(conn) {
+        dest_ = "";
+    }
+    void Launch(std::string s);
+private:
+    std::string dest_;    
+};
 
