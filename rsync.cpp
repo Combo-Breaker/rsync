@@ -24,7 +24,7 @@ void Protocol::RequestList() { //запрос на список файлов
 void Protocol::SendFileList(const FileList& list) { //отправить список файлов
     Frame f;
     f.msg_id = MsgId::FILELIST;
-    std::stringstream ss;
+    stringstream ss;
     boost::archive::text_oarchive archive(ss);
     archive << list;
     f.body = ss.str();
@@ -32,7 +32,7 @@ void Protocol::SendFileList(const FileList& list) { //отправить спи�
 }
 
 
-void Protocol::SendOk() { //отправить ОК
+void Protocol::SendOk() { 
     Frame f;
     f.msg_id = MsgId::OK;
     f.body = "";
@@ -40,13 +40,13 @@ void Protocol::SendOk() { //отправить ОК
 }
 
 
-MsgId Protocol::RecvMsg() { //получить msg
+MsgId Protocol::RecvMsg() { 
     conn_->ReadFrame(&last_received_);
     return last_received_.msg_id;
 }
 
 FileList Protocol::GetFileList() { //получить список файлов из фрейма
-    std::stringstream ss;
+    stringstream ss;
     ss << last_received_.body;
     FileList list;
     boost::archive::text_iarchive archive(ss);
@@ -57,7 +57,7 @@ FileList Protocol::GetFileList() { //получить список файлов 
 void read_all(int fd, char* buf, size_t size) {
     int s = 0;
     while (int w = read(fd, buf + s, size)) {
-        if (w == -1) throw ("Can`t read the frame");
+        if (w == -1) throw std::runtime_error("Can`t read the frame");
         size -= w;
         s += w;
     }
@@ -66,7 +66,7 @@ void read_all(int fd, char* buf, size_t size) {
 void write_all(int fd, char* buf, size_t size) {
     int s = 0;
     while (int w = write(fd, buf + s, size)) {
-        if (w == -1) throw ("Can`t write the frame");
+        if (w == -1) throw runtime_error("Can`t write the frame");
         size -= w;
         s += w;
     }
@@ -94,7 +94,7 @@ FileList GetFiles(string path) {   //получить список файлов 
     FileList F;      
     DIR *dir;
     dir = opendir(path.c_str());
-    if (dir == NULL) throw ("Can`t open the directory");
+    if (dir == NULL) throw runtime_error("Can`t open the directory");
     struct dirent *cur;
     while ((cur = readdir(dir)) != NULL) {
         string tmp(cur->d_name);
@@ -102,7 +102,7 @@ FileList GetFiles(string path) {   //получить список файлов 
             F.files.push_back(tmp);
         }                
     int d = closedir(dir);
-    if (d == -1) throw("Can`t close the directory");
+    if (d == -1) throw runtime_error("Can`t close the directory");
     return F; 
 }
 
@@ -122,70 +122,93 @@ pair < vector<string>, vector<string> > difference (vector<string> source, vecto
 }
 
 
-void rsync(string source, string dest) {
-    int sock[2];    
-    sock[0] = socket(AF_INET, SOCK_STREAM, 0);
-    sock[1] = socket(AF_INET, SOCK_STREAM, 0);
-    SocketConnection sender(sock[0]), receiver(sock[1]);
-    FileList list_dest, list_source;
-    Protocol senrer_prot(&sender);
-    Protocol receiver_prot(&receiver);
+void Sender::Launch(string source) {
+    this->RequestList();
+    FileList source_files = GetFiles(source);
+    bool state = true;
+    while (state) { 
+        this->RecvMsg();
+        switch (this->last_received_.msg_id) {
+            case MsgId::FILELIST: {
+                FileList dest_files = this->GetFileList();                
+                
+                pair <vector<string>, vector<string> > diff = difference(source_files.files, dest_files.files);
+                for (auto it = diff.first.begin(); it != diff.first.end(); ++it) {
+                    cout << "cp" << ' ' << (*it) << endl;
+                }
+                for (auto it = diff.second.begin(); it != diff.second.end(); ++it) {
+                    cout << "rm" << ' ' << (*it) << endl;
+                }
+                
+                this->SendOk();
 
-    thread client([&] { // sender - source
-        struct sockaddr_in addr;
-        addr.sin_family = AF_INET;
-        addr.sin_port = htons(3425);
-        addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK); //тут пока замыкание на себя
-         if (connect(sock[0], (struct sockaddr *)&addr, sizeof(addr)) < 0)
-            throw ("Can`t connect to the server");
-        
-        senrer_prot.RequestList();
-        senrer_prot.RecvMsg();
-        list_source = GetFiles(source);
-        pair < vector<string>, vector<string> > diff;
-        diff = difference(list_source.files, senrer_prot.GetFileList().files);
-
-        /* ВЫВОД РАЗНОСТИ */
-        for (auto i : diff.first)
-            cout << "cp" << " " << i << endl; 
-        for (auto i : diff.second)
-            cout << "rm" << " " << i << endl; 
-
-
-        senrer_prot.SendOk(); 
-        close(sock[0]);        
-    });
-
-
-    thread server([&] { // reciever - dest
-        int listener;
-        struct sockaddr_in addr;
-
-        listener = socket(AF_INET, SOCK_STREAM, 0);
-        addr.sin_family = AF_INET;
-        addr.sin_port = htons(3425);
-        addr.sin_addr.s_addr = htonl(INADDR_ANY);
-        int t = sizeof(addr);
-        if (bind(listener, (struct sockaddr *)&addr, t) < 0) 
-            throw("Bind error"); // переписать
-        while(1) {
-            sock[1] = accept(listener, NULL, NULL);
-            MsgId i = receiver_prot.RecvMsg();
-            switch (i) {
-                case MsgId::OK:
-                   close(sock[1]);
-                   break; // нужно ли?
-                case MsgId::GETLIST:
-                    list_dest = GetFiles(dest);
-                    receiver_prot.SendFileList(list_dest); 
+                state = false;
+                break;
             }
-        }       
-    });
-    client.join();
-    server.join();    
+        }
+    }
+}
+
+void Receiver::Launch(string dest) {
+    bool state = true;
+    while (state) {
+        this->RecvMsg();
+        switch (this->last_received_.msg_id) {
+            case MsgId::GETLIST: {
+                this->dest_ = this->last_received_.body;
+                FileList files = GetFileList();
+                this->SendFileList(files);
+                break;
+            }
+            case MsgId::OK: {
+                state = false;
+                break;
+            }
+            default: {}
+        }
+    }
 }
 
 
+void rsync(string source, string dest, int mode) {
+     if (mode == 1) {
+            int sock;    
+            sock = socket(AF_INET, SOCK_STREAM, 0);
+            struct sockaddr_in addr;
 
+            int listener = socket(AF_INET, SOCK_STREAM, 0);
+            if(listener < 0)
+                    throw runtime_error("listener error");
+    
+            addr.sin_family = AF_INET;
+            addr.sin_port = htons(3425);
+            addr.sin_addr.s_addr = htonl(INADDR_ANY);
+            if(bind(listener, (struct sockaddr *)&addr, sizeof(addr)) < 0)
+                throw runtime_error("bind error");
 
+            listen(listener, 1);
+            sock = accept(listener, NULL, NULL);
+            if(sock < 0)
+                throw runtime_error("accept error");
+            
+            SocketConnection s(sock);
+            Sender sender(&s, source, dest);
+            sender.Launch(source);
+            
 
+    } else if (mode == 2) {
+        
+            int sock;    
+            sock = socket(AF_INET, SOCK_STREAM, 0);
+            struct sockaddr_in addr;
+            addr.sin_family = AF_INET;
+            addr.sin_port = htons(3425);
+            addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK); //тут пока замыкание на себя
+            if (connect(sock, (struct sockaddr *)&addr, sizeof(addr)) < 0)
+                throw runtime_error("Can`t connect to the server");
+            
+            SocketConnection r(sock);
+            Receiver receiver(&r);
+            receiver.Launch(dest);
+    }    
+}
